@@ -120,6 +120,7 @@ dotnet test
 
 | メソッド | パス | 説明 |
 |---------|------|------|
+| `GET` | `/` | UI 管理画面 |
 | `GET` | `/api/products` | 全商品を取得（`?category=` でフィルタ可能） |
 | `GET` | `/api/products/{id}` | 指定 ID の商品を取得 |
 | `POST` | `/api/products` | 新しい商品を作成 |
@@ -127,18 +128,19 @@ dotnet test
 | `DELETE` | `/api/products/{id}` | 指定 ID の商品を削除 |
 | `GET` | `/healthz` | Liveness ヘルスチェック |
 | `GET` | `/readyz` | Readiness ヘルスチェック |
+| `GET` | `/openapi/v1.json` | OpenAPI 仕様 (開発環境のみ) |
 
 ### curl サンプル
 
 ```bash
 # 全商品取得
-curl http://localhost:8080/api/products
+curl http://localhost:5000/api/products
 
 # カテゴリでフィルタ
-curl "http://localhost:8080/api/products?category=食品"
+curl "http://localhost:5000/api/products?category=食品"
 
 # 商品作成
-curl -X POST http://localhost:8080/api/products \
+curl -X POST http://localhost:5000/api/products \
   -H "Content-Type: application/json" \
   -d '{
     "name": "サンプル商品",
@@ -148,10 +150,10 @@ curl -X POST http://localhost:8080/api/products \
   }'
 
 # 商品取得（ID 指定）
-curl http://localhost:8080/api/products/{id}
+curl http://localhost:5000/api/products/{id}
 
 # 商品更新
-curl -X PUT http://localhost:8080/api/products/{id} \
+curl -X PUT http://localhost:5000/api/products/{id} \
   -H "Content-Type: application/json" \
   -d '{
     "name": "更新後の商品名",
@@ -161,8 +163,10 @@ curl -X PUT http://localhost:8080/api/products/{id} \
   }'
 
 # 商品削除
-curl -X DELETE http://localhost:8080/api/products/{id}
+curl -X DELETE http://localhost:5000/api/products/{id}
 ```
+
+> **Note:** Docker 起動時は `localhost:5000` を `localhost:8080` に読み替えてください。
 
 ---
 
