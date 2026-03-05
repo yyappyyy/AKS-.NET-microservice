@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: product-catalog
-          image: <ACR_LOGIN_SERVER>/product-catalog:latest
+          image: yyaksmicroyy.azurecr.io/product-catalog:latest
           ports:
             - containerPort: 8080
               protocol: TCP
