@@ -1,4 +1,4 @@
-# Step 09: Namespace と RBAC
+﻿# Step 09: Namespace と RBAC
 
 > **KCNA 配点: Kubernetes Fundamentals — 46%**
 
@@ -24,24 +24,31 @@ metadata:
     app.kubernetes.io/part-of: aks-microservices
 ```
 
+### Namespace で何が分離されるか
+
 ```
 AKS Cluster
-├── default                    ← デフォルト（使わない方がよい）
-├── kube-system                ← K8s システムコンポーネント
-├── kube-public                ← 公開情報
-├── product-catalog            ← ★ このプロジェクト
-├── order-service              ← 将来のサービス
-└── monitoring                 ← Prometheus 等
+├── default           ← デフォルト（使わない方がよい）
+├── kube-system       ← K8s システムコンポーネント
+├── kube-public       ← 公開情報
+├── product-catalog   ← ★ このプロジェクト
+└── monitoring        ← Prometheus 等
 ```
+
+| | Namespace スコープ | クラスタースコープ |
+|--|-------------------|------------------|
+| 例 | Pod, Service, Deployment, ConfigMap, Secret, Role | Node, PV, ClusterRole, Namespace 自体 |
+
+---
 
 ## RBAC の構造
 
 ```
-User / ServiceAccount
+User / Group / ServiceAccount   ← 「誰が」
         │
-  RoleBinding          ← 「誰に」+「どの Role を」
+  RoleBinding / ClusterRoleBinding   ← 「紐づけ」
         │
-  Role / ClusterRole   ← 「何のリソースに」+「何ができるか」
+  Role / ClusterRole   ← 「何に」+「何ができるか」
 ```
 
 | | Namespace スコープ | クラスター全体 |
@@ -49,78 +56,154 @@ User / ServiceAccount
 | 権限定義 | **Role** | **ClusterRole** |
 | 紐づけ | **RoleBinding** | **ClusterRoleBinding** |
 
-## ResourceQuota
+### Role の例
 
-Namespace ごとにリソース使用量を制限:
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: product-catalog
+  name: pod-reader
+rules:
+  - apiGroups: [""]            # core API グループ
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+```
+
+### ServiceAccount
+
+Pod が API Server にアクセスするための **ID**:
 
 ```yaml
 apiVersion: v1
-kind: ResourceQuota
+kind: ServiceAccount
 metadata:
-  name: compute-quota
-  namespace: kcna-lab
-spec:
-  hard:
-    requests.cpu: "2"
-    requests.memory: "2Gi"
-    pods: "10"
+  name: my-app-sa
+  namespace: product-catalog
 ```
+
+---
+
+## ResourceQuota と LimitRange
+
+| リソース | 対象 | 説明 |
+|----------|------|------|
+| **ResourceQuota** | Namespace 全体 | NS 内のリソース使用量の合計上限 |
+| **LimitRange** | 個々の Pod | Pod ごとのデフォルト値や最大値 |
 
 ---
 
 ## AKS ハンズオン
 
-### 1. 既存の Namespace を確認
+### 1. Namespace を確認
 
 ```bash
-# クラスター内の全 Namespace を一覧表示
+# 全 Namespace 一覧
 kubectl get namespaces
-#   default       : デフォルト（ユーザーリソースの初期配置先）
-#   kube-system   : K8s システムコンポーネント
-#   kube-public   : 公開情報
 
-# product-catalog Namespace の全リソースを表示
+# Namespace の詳細
+kubectl describe namespace default
+
+# product-catalog の全リソース
 kubectl get all -n product-catalog
+
+# Namespace スコープのリソースだけ表示
+kubectl api-resources --namespaced=true | head -20
+
+# クラスタースコープのリソースだけ表示
+kubectl api-resources --namespaced=false | head -20
 ```
 
-### 2. 学習用 Namespace と ResourceQuota を作成
+### 2. 学習用 Namespace + ResourceQuota を作成
 
 ```bash
-# kcna-lab Namespace + ResourceQuota を作成
+# kcna-lab Namespace + Quota を作成
 kubectl apply -f services/kcna-guide/step-09-namespace-rbac/quota.yaml
 
-# Namespace が作成されたことを確認
+# 確認
 kubectl get namespaces | grep kcna
 
-# ResourceQuota の詳細を表示（Used / Hard の対比が見える）
+# Quota の詳細（Used / Hard の対比）
 kubectl describe resourcequota compute-quota -n kcna-lab
+```
 
-# kcna-lab に Pod を作ってみる（Quota の動作確認）
+### 3. Quota の動作を体験
+
+```bash
+# Pod を作成（requests/limits 必須）
 kubectl run test-pod --image=nginx --namespace=kcna-lab \
   --requests='cpu=100m,memory=128Mi' --limits='cpu=200m,memory=256Mi'
 
-# Quota の Used が増えたことを確認
+# Quota の Used が増える
 kubectl describe resourcequota compute-quota -n kcna-lab
+
+# requests/limits なしで作ろうとすると → Quota のため拒否される
+kubectl run test-pod2 --image=nginx --namespace=kcna-lab 2>&1 || true
+# Error: failed quota: compute-quota
+```
+
+### 4. RBAC を確認
+
+```bash
+# 現在のユーザーの権限を確認
+kubectl auth can-i create pods
+kubectl auth can-i delete deployments
+kubectl auth can-i create pods --namespace=kube-system
+
+# 全ての権限を確認
+kubectl auth can-i --list
+
+# ClusterRole 一覧（K8s 組み込みの Role が多数）
+kubectl get clusterrole | head -20
+
+# admin ClusterRole の詳細
+kubectl describe clusterrole admin | head -30
+
+# ServiceAccount 一覧
+kubectl get serviceaccount -n kcna-lab
+kubectl get serviceaccount -n kube-system | head -10
+
+# default ServiceAccount の詳細
+kubectl describe serviceaccount default -n kcna-lab
+```
+
+### 5. Namespace の操作
+
+```bash
+# Imperative に Namespace を作成
+kubectl create namespace test-ns
+
+# デフォルト Namespace を変更（毎回 -n を付けなくてよくなる）
+kubectl config set-context --current --namespace=test-ns
+
+# 確認
+kubectl config view --minify | grep namespace
+
+# default に戻す
+kubectl config set-context --current --namespace=default
+
+# Namespace を削除
+kubectl delete namespace test-ns
 ```
 
 ### 🧹 クリーンアップ
 
 ```bash
-# Namespace を削除すると中の全リソース（Pod, Quota 等）も一緒に消える
+# Namespace を削除（中の全リソースも一緒に消える）
 kubectl delete namespace kcna-lab
 
-# 削除が完了するまで数秒かかる場合がある
 # 確認
 kubectl get namespaces | grep kcna
-# 何も表示されなければ OK
 ```
 
 ---
 
 ## KCNA 試験チェックリスト
 
-- [ ] Namespace の用途（リソース分離、環境分離）
-- [ ] Role vs ClusterRole（Namespace スコープ vs クラスター全体）
+- [ ] Namespace の用途（リソース分離、チーム分離、環境分離）
+- [ ] Namespace スコープ vs クラスタースコープ
+- [ ] Role vs ClusterRole
 - [ ] RoleBinding vs ClusterRoleBinding
-- [ ] ServiceAccount = Pod が API Server にアクセスするための ID
-- [ ] ResourceQuota と LimitRange の違い
+- [ ] ServiceAccount = Pod の API アクセス用 ID
+- [ ] ResourceQuota（NS全体）と LimitRange（Pod個別）の違い
+- [ ] 最小権限の原則

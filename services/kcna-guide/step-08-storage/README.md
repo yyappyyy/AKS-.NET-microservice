@@ -1,4 +1,4 @@
-# Step 08: ストレージ
+﻿# Step 08: ストレージ
 
 > **KCNA 配点: Kubernetes Fundamentals — 46%**
 
@@ -16,23 +16,20 @@
 クラスター管理者             開発者                Pod
 ┌──────────────┐          ┌──────────┐        ┌────────┐
 │ StorageClass │──自動──▶ │   PVC    │──使用──▶│ Volume │
-│ (AKS: managed│  作成    │ 「5GB欲しい」│       │ (Pod内)│
+│ (AKS: managed│  作成    │ 「1GB欲しい」│       │ (Pod内)│
 │  -csi)       │          └──────────┘        └────────┘
 └──────────────┘
   ダイナミックプロビジョニング: PVC を作ると PV が自動作成される
 ```
 
-## AKS の StorageClass（組み込み）
+## Volume タイプ
 
-```bash
-kubectl get storageclass
-```
-
-| StorageClass | Azure ディスク | 用途 |
-|-------------|---------------|------|
-| `managed` | Standard HDD | 開発・テスト |
-| `managed-premium` | Premium SSD | 本番 |
-| `managed-csi` | CSI ドライバー | **推奨** |
+| タイプ | ライフサイクル | 説明 |
+|--------|-------------|------|
+| **emptyDir** | Pod と同じ | 一時ディレクトリ。Pod 削除でデータ消失 |
+| **hostPath** | Node に依存 | Node のファイルシステムをマウント |
+| **configMap / secret** | リソースと同じ | 設定をファイルとしてマウント |
+| **persistentVolumeClaim** | PV に依存 | 永続ストレージ |
 
 ## Access Modes（試験に出る！）
 
@@ -42,13 +39,13 @@ kubectl get storageclass
 | ReadOnlyMany | ROX | 複数 Node から読み取りのみ |
 | ReadWriteMany | RWX | 複数 Node から読み書き |
 
-> Azure Disk は **RWO のみ**。RWX が必要なら Azure Files を使う。
+> Azure Disk = **RWO のみ**。RWX が必要なら Azure Files を使う。
 
 ## Reclaim Policy
 
-| ポリシー | PVC 削除時の動作 |
-|----------|-----------------|
-| **Delete** | PV とデータも削除（StorageClass のデフォルト） |
+| ポリシー | PVC 削除時 |
+|----------|----------|
+| **Delete** | PV もデータも削除（デフォルト） |
 | **Retain** | PV とデータを保持 |
 
 ---
@@ -58,42 +55,81 @@ kubectl get storageclass
 ### 1. StorageClass を確認
 
 ```bash
-# AKS に組み込みの StorageClass を一覧表示
-#   managed-csi, managed-csi-premium 等が見える
+# AKS 組み込みの StorageClass
 kubectl get storageclass
 
-# 特定の StorageClass の詳細（provisioner, reclaimPolicy 等）
+# 詳細（provisioner, reclaimPolicy, volumeBindingMode）
 kubectl describe storageclass managed-csi
+
+# デフォルトの StorageClass を確認
+kubectl get storageclass -o custom-columns='NAME:.metadata.name,DEFAULT:.metadata.annotations.storageclass\.kubernetes\.io/is-default-class'
 ```
 
-### 2. PVC を作成してダイナミックプロビジョニングを体験
+### 2. PVC を作成
 
 ```bash
-# PVC を作成（StorageClass: managed-csi, 1Gi, RWO）
+# PVC を作成
 kubectl apply -f services/kcna-guide/step-08-storage/pvc.yaml
 
 # PVC の状態を確認
-#   STATUS が Bound になれば PV が自動作成されてバインドされた
-#   WaitForFirstConsumer の場合は Pod がスケジュールされるまで Pending
+#   STATUS=Bound: PV が自動作成されてバインド済み
+#   STATUS=Pending: WaitForFirstConsumer の場合、Pod 配置まで待機
 kubectl get pvc
 
 # 自動作成された PV を確認
 kubectl get pv
 
-# PVC の詳細（容量、Access Mode、StorageClass、バインド先 PV 等）
+# PVC の詳細（容量、Access Mode、StorageClass、バインド先 PV）
 kubectl describe pvc demo-pvc
+
+# PV の詳細（Azure Disk のリソース ID 等）
+PV_NAME=$(kubectl get pvc demo-pvc -o jsonpath='{.spec.volumeName}')
+kubectl describe pv $PV_NAME
+```
+
+### 3. emptyDir を体験
+
+```bash
+# emptyDir Volume を使う Pod を作成
+kubectl run vol-demo --image=busybox --command -- sh -c \
+  "echo 'Hello from emptyDir' > /data/test.txt && cat /data/test.txt && sleep 3600" \
+  --overrides='{"spec":{"containers":[{"name":"vol-demo","image":"busybox","command":["sh","-c","echo Hello > /data/test.txt && cat /data/test.txt && sleep 3600"],"volumeMounts":[{"name":"tmp","mountPath":"/data"}]}],"volumes":[{"name":"tmp","emptyDir":{}}]}}'
+
+# Pod 内のファイルを確認
+kubectl exec vol-demo -- cat /data/test.txt
+# 出力: Hello
+
+# Pod を削除すると emptyDir の内容も消える
+kubectl delete pod vol-demo
+```
+
+### 4. PVC を使う Pod を作成
+
+```bash
+# PVC を使う Pod（YAML を直接生成して apply）
+kubectl run pvc-demo --image=busybox --command -- sh -c "echo 'Persistent!' > /mnt/data/test.txt && sleep 3600" \
+  --overrides='{"spec":{"containers":[{"name":"pvc-demo","image":"busybox","command":["sh","-c","echo Persistent > /mnt/data/test.txt && sleep 3600"],"volumeMounts":[{"name":"storage","mountPath":"/mnt/data"}]}],"volumes":[{"name":"storage","persistentVolumeClaim":{"claimName":"demo-pvc"}}]}}'
+
+# ファイルが書き込まれたことを確認
+kubectl exec pvc-demo -- cat /mnt/data/test.txt
+# 出力: Persistent
+
+# PVC の状態を再確認（Bound のまま）
+kubectl get pvc
 ```
 
 ### 🧹 クリーンアップ
 
 ```bash
-# PVC を削除（Reclaim Policy が Delete なら PV と Azure Disk も自動削除される）
+# Pod を先に削除（PVC を使っている場合）
+kubectl delete pod pvc-demo vol-demo --ignore-not-found
+
+# PVC を削除（Delete Policy なら PV + Azure Disk も自動削除）
 kubectl delete -f services/kcna-guide/step-08-storage/pvc.yaml
 
-# PV が削除されたことを確認
+# 確認
 kubectl get pvc
 kubectl get pv
-# demo-pvc が表示されなければ OK
 ```
 
 ---
@@ -105,3 +141,4 @@ kubectl get pv
 - [ ] StorageClass でダイナミックプロビジョニング
 - [ ] Delete vs Retain の Reclaim Policy
 - [ ] emptyDir は Pod 削除でデータ消失
+- [ ] Azure Disk = RWO、Azure Files = RWX

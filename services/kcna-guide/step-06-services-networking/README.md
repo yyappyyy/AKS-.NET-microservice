@@ -1,4 +1,4 @@
-# Step 06: Service とネットワーキング
+﻿# Step 06: Service とネットワーキング
 
 > **KCNA 配点: Kubernetes Fundamentals 46% + Container Orchestration 22%**
 
@@ -27,9 +27,9 @@ Pod(10.244.0.5) Pod(10.244.1.3) Pod(10.244.2.7)  ← IP は変動
 
 | タイプ | アクセス範囲 | AKS での用途 |
 |--------|-------------|-------------|
-| **ClusterIP** | クラスター内部のみ | マイクロサービス間通信 ← **Product Catalog で使用** |
+| **ClusterIP** | クラスター内部のみ | マイクロサービス間通信 ← **Product Catalog** |
 | **NodePort** | Node IP:Port (30000-32767) | 開発・テスト |
-| **LoadBalancer** | **Azure Load Balancer** 経由 | 外部公開（AKS 推奨） |
+| **LoadBalancer** | **Azure LB** 経由 | 外部公開（AKS 推奨） |
 | **ExternalName** | 外部 DNS の CNAME | 外部サービス参照 |
 
 ## 実プロジェクトの Service
@@ -47,28 +47,24 @@ spec:
   selector:
     app: product-catalog         # ← この label の Pod にルーティング
   ports:
-    - port: 80                   # ← Service のポート
+    - port: 80                   # ← Service のポート（アクセスする側）
       targetPort: 8080           # ← Pod のポート（.NET が LISTEN）
 ```
 
-## 実プロジェクトの Ingress
+> **port vs targetPort:** Service に `80` でアクセスすると、Pod の `8080` に転送される。
 
-`k8s/product-catalog/ingress.yaml`:
+## Ingress
+
+L7 (HTTP/HTTPS) でパスベース・ホストベースのルーティング:
 
 ```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: product-catalog
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
-  ingressClassName: nginx          # ← Ingress Controller が必要
+  ingressClassName: nginx          # ← Ingress Controller が別途必要
   rules:
-    - http:
+    - host: shop.example.com
+      http:
         paths:
-          - path: /product-catalog(/|$)(.*)
-            pathType: ImplementationSpecific
+          - path: /api/products
             backend:
               service:
                 name: product-catalog
@@ -76,7 +72,7 @@ spec:
                   number: 80
 ```
 
-> **Ingress を使うには Ingress Controller が必要。** AKS では NGINX Ingress Controller をアドオンで追加可能。
+> **Ingress リソースだけでは動作しない。Ingress Controller（NGINX 等）が必要。**
 
 ---
 
@@ -101,79 +97,119 @@ curl http://product-catalog/api/products
 ### 1. Product Catalog をデプロイ
 
 ```bash
-# Namespace を作成
 kubectl apply -f k8s/base/
-
-# 全リソース（Deployment, Service, ConfigMap, HPA, Ingress）をデプロイ
 kubectl apply -f k8s/product-catalog/
 
-# Pod が Running になるまで待つ
+# Pod が Running になるまで待つ（Ctrl+C で終了）
 kubectl get pods -n product-catalog -w
-# Ctrl+C で監視を終了
 ```
 
-### 2. Service の動作を確認
+### 2. Service を確認
 
 ```bash
-# Service 一覧を表示
-#   ClusterIP と PORT が表示される
+# Service 一覧（ClusterIP, PORT）
 kubectl get svc -n product-catalog
 
-# Endpoints を確認（Service に紐づいている Pod の IP:Port）
-#   → Pod が Ready でないと Endpoints に表示されない
+# Service の全情報を YAML で確認
+kubectl get svc product-catalog -n product-catalog -o yaml
+
+# Endpoints（Service に紐づく Pod の IP:Port）
 kubectl get endpoints -n product-catalog
 
-# Service の詳細（Selector, Port, Endpoints 等）
+# Service の詳細（Selector, Events）
 kubectl describe svc product-catalog -n product-catalog
+
+# 全 Service タイプの Service を一覧
+kubectl get svc -A
 ```
 
 ### 3. ポートフォワードでアクセス
 
 ```bash
-# ポートフォワード: ローカルの 8080 → Service の 80 → Pod の 8080
-#   Ctrl+C で停止
+# ポートフォワード: ローカル 8080 → Service 80 → Pod 8080
 kubectl port-forward -n product-catalog svc/product-catalog 8080:80
+# Ctrl+C で停止
 ```
 
-**別ターミナルで API をテスト:**
+**別ターミナルでテスト:**
 
 ```bash
-# ヘルスチェック
 curl http://localhost:8080/healthz
-# 期待値: Healthy
-
-# 商品一覧
 curl http://localhost:8080/api/products
-# 期待値: []
-
-# UI にアクセス（ブラウザで開く）
-# http://localhost:8080/
+# ブラウザ: http://localhost:8080/
 ```
 
-### 4. Kubernetes DNS の確認
+### 4. Pod に直接ポートフォワード
 
 ```bash
-# クラスター内から DNS 名前解決をテスト
-#   --rm : 完了後に Pod を自動削除
-#   -it  : 対話モード
+# Pod 名を取得
+POD=$(kubectl get pods -n product-catalog -o jsonpath='{.items[0].metadata.name}')
+
+# Pod に直接ポートフォワード（Service を経由しない）
+kubectl port-forward -n product-catalog pod/$POD 8081:8080
+
+# 別ターミナルで
+curl http://localhost:8081/healthz
+```
+
+### 5. DNS の確認
+
+```bash
+# クラスター内から DNS を確認
 kubectl run dns-test --image=busybox --rm -it -- nslookup product-catalog.product-catalog.svc.cluster.local
-# → IP アドレスが返れば DNS が正常に動作している
+
+# クラスター内からの HTTP アクセスを確認
+kubectl run curl-test --image=curlimages/curl --rm -it -- curl -s http://product-catalog.product-catalog.svc/api/products
+
+# 短縮名でのアクセス（同じ Namespace 内のみ）
+kubectl run curl-test --image=curlimages/curl --rm -it -n product-catalog -- curl -s http://product-catalog/healthz
+```
+
+### 6. LoadBalancer タイプの Service を体験
+
+```bash
+# nginx を LoadBalancer で公開（Azure LB が作成される）
+kubectl create deployment lb-demo --image=nginx
+kubectl expose deployment lb-demo --port=80 --type=LoadBalancer
+
+# EXTERNAL-IP が表示されるまで待つ（1〜2 分）
+kubectl get svc lb-demo -w
+
+# EXTERNAL-IP にブラウザでアクセス
+# curl http://<EXTERNAL-IP>
+
+# 削除
+kubectl delete svc lb-demo
+kubectl delete deployment lb-demo
+```
+
+### 7. Service の Selector を確認
+
+```bash
+# Service がどの Pod を選択しているか確認
+kubectl get svc product-catalog -n product-catalog -o jsonpath='{.spec.selector}'
+
+# 一致する Pod を確認
+kubectl get pods -n product-catalog -l app=product-catalog
+
+# ラベルが一致しない Pod はEndpoints から除外される
 ```
 
 ### 🧹 クリーンアップ
 
 ```bash
-# ポートフォワードを停止: Ctrl+C
+# ポートフォワード停止: Ctrl+C
 
-# Product Catalog の全リソースを削除
+# LoadBalancer デモを削除（既に上で削除済みなら不要）
+kubectl delete svc lb-demo --ignore-not-found
+kubectl delete deployment lb-demo --ignore-not-found
+
+# Product Catalog を削除する場合
 kubectl delete -f k8s/product-catalog/
-
-# Namespace を削除（中のリソースも全て削除される）
 kubectl delete -f k8s/base/
 
 # 確認
 kubectl get all -n product-catalog
-# 「No resources found」と表示されれば OK
 ```
 
 ---
@@ -182,6 +218,7 @@ kubectl get all -n product-catalog
 
 - [ ] 4 つの Service タイプの違い（特に ClusterIP vs LoadBalancer）
 - [ ] Label Selector で Pod を選択する仕組み
-- [ ] port（Service）vs targetPort（Pod）の違い
-- [ ] Ingress と Ingress Controller の関係
+- [ ] port（Service 側）vs targetPort（Pod 側）の違い
+- [ ] Ingress と Ingress Controller の関係（Controller が別途必要）
 - [ ] Kubernetes DNS の命名規則（`<svc>.<ns>.svc.cluster.local`）
+- [ ] Endpoints が Pod の IP:Port のリスト

@@ -1,4 +1,4 @@
-# Step 12: Observability（可観測性）
+﻿# Step 12: Observability（可観測性）
 
 > **KCNA 配点: Cloud Native Observability — 8%**
 
@@ -24,11 +24,13 @@
                Loki
 ```
 
-| 柱 | 何を見るか | ツール例 |
-|----|-----------|---------|
-| **Metrics** | CPU、レスポンス時間 | Prometheus (CNCF Graduated) |
-| **Logs** | エラー、デバッグ情報 | Fluentd (CNCF Graduated) |
-| **Traces** | サービス間の呼び出し | Jaeger (CNCF Graduated) |
+| 柱 | 何を見るか | ツール例 | CNCF |
+|----|-----------|---------|------|
+| **Metrics** | CPU、応答時間、エラー率 | Prometheus | Graduated |
+| **Logs** | エラーメッセージ、デバッグ | Fluentd, Fluent Bit | Graduated |
+| **Traces** | サービス間の呼び出しフロー | Jaeger | Graduated |
+
+> **Alerts は 3 本柱に含まれない。** Alerts は Observability を活用したアクション。
 
 ## Prometheus（頻出！）
 
@@ -39,72 +41,130 @@
 └──────┘              └────────────┘         └─────────┘
 ```
 
-- **Pull 型**: Prometheus がアプリの `/metrics` を定期的に取りに行く
+- **Pull 型**: Prometheus がアプリの `/metrics` を定期スクレイプ
 
 ### メトリクスタイプ
 
-| タイプ | 説明 | 例 |
+| タイプ | 動き | 例 |
 |--------|------|-----|
-| **Counter** | 増加のみ | リクエスト数 |
-| **Gauge** | 増減する | CPU 使用率 |
-| **Histogram** | 分布 | レスポンス時間 |
+| **Counter** | 増加のみ | リクエスト総数 |
+| **Gauge** | 増減する | 現在の CPU 使用率 |
+| **Histogram** | 分布を記録 | レスポンス時間の分布 |
 
 ## OpenTelemetry (CNCF Incubating)
 
-メトリクス・ログ・トレースを**統一された仕様**で計装:
+3 本柱を**統一的な仕様と SDK**で計装:
 - ベンダーロックインを防ぐ
-- 1 つの SDK で 3 本柱すべてに対応
+- バックエンド（Prometheus, Jaeger 等）を自由に選択
 
 ---
 
 ## AKS ハンズオン
 
-> **前提:** Product Catalog がデプロイ済みであること（Step 06 参照）
+> **前提:** Product Catalog がデプロイ済み（Step 06 参照）
 
-### 1. Node / Pod のリソース使用量を確認
+### 1. Node のリソース確認
 
 ```bash
-# Node ごとの CPU / メモリ使用量を表示
-#   metrics-server が必要（AKS ではデフォルトで有効）
+# Node の CPU / メモリ使用量
 kubectl top nodes
 
-# Pod ごとの CPU / メモリ使用量
+# Node の使用率を詳細に確認
+kubectl describe nodes | grep -A 10 "Allocated resources"
+```
+
+### 2. Pod のリソース確認
+
+```bash
+# Pod の CPU / メモリ使用量
 kubectl top pods -n product-catalog
 
-# 全 Namespace の Pod 使用量
-kubectl top pods --all-namespaces --sort-by=cpu
+# 全 Namespace の Pod を CPU 順でソート
+kubectl top pods --all-namespaces --sort-by=cpu | head -20
+
+# 全 Namespace の Pod をメモリ順でソート
+kubectl top pods --all-namespaces --sort-by=memory | head -20
+
+# 特定 Pod のリソース使用量
+kubectl top pod -n product-catalog -l app=product-catalog
 ```
 
-### 2. Pod のログを確認
+### 3. Pod のログ確認
 
 ```bash
-# product-catalog の Pod ログを表示（直近 20 行）
-#   -l : Label Selector（複数 Pod をまとめて取得）
+# Pod ログ（直近 20 行）
 kubectl logs -n product-catalog -l app=product-catalog --tail=20
 
-# ログをリアルタイム追跡（Ctrl+C で停止）
+# リアルタイム追跡（Ctrl+C で停止）
 kubectl logs -n product-catalog -l app=product-catalog -f
 
-# 特定の Pod のログ
-kubectl logs -n product-catalog <pod-name>
+# 特定 Pod のログ
+POD=$(kubectl get pods -n product-catalog -o jsonpath='{.items[0].metadata.name}')
+kubectl logs -n product-catalog $POD
 
-# 前回クラッシュしたコンテナのログ（トラブルシューティング用）
-kubectl logs -n product-catalog <pod-name> --previous
+# タイムスタンプ付き
+kubectl logs -n product-catalog $POD --timestamps
+
+# 直近 5 分のログのみ
+kubectl logs -n product-catalog $POD --since=5m
+
+# 前回クラッシュしたコンテナのログ
+kubectl logs -n product-catalog $POD --previous 2>/dev/null || echo "No previous logs"
 ```
 
-### 3. AKS の Azure Monitor を有効化
+### 4. Pod のイベントを確認
 
 ```bash
-# Azure Monitor（Container Insights）を有効化
-#   → Azure Portal で CPU、メモリ、ログをグラフィカルに確認可能
+# Namespace 内の全イベントを時系列で表示
+kubectl get events -n product-catalog --sort-by='.lastTimestamp'
+
+# 警告イベントだけ表示
+kubectl get events -n product-catalog --field-selector type=Warning
+
+# クラスター全体のイベント
+kubectl get events -A --sort-by='.lastTimestamp' | tail -20
+```
+
+### 5. Pod の状態を詳細に調査
+
+```bash
+# Pod の Conditions（True/False でヘルス状態がわかる）
+kubectl get pods -n product-catalog -o custom-columns=\
+'NAME:.metadata.name,READY:.status.conditions[?(@.type=="Ready")].status,PHASE:.status.phase'
+
+# Pod の再起動回数
+kubectl get pods -n product-catalog -o custom-columns=\
+'NAME:.metadata.name,RESTARTS:.status.containerStatuses[0].restartCount'
+```
+
+### 6. AKS の Azure Monitor を有効化
+
+```bash
+# Container Insights（Azure Monitor）を有効化
 az aks enable-addons \
   --resource-group rg-aks-microservices \
   --name aks-microservices \
   --addons monitoring
 
-# 確認
+# 有効化を確認
 az aks show --resource-group rg-aks-microservices --name aks-microservices \
   --query addonProfiles.omsagent.enabled
+
+# Azure Portal で確認:
+#   AKS リソース → 監視 → インサイト → コンテナー
+```
+
+### 7. kube-system のログ確認（DNS 等のトラブル時）
+
+```bash
+# CoreDNS のログ
+kubectl logs -n kube-system -l k8s-app=kube-dns --tail=20
+
+# kube-proxy のログ
+kubectl logs -n kube-system -l component=kube-proxy --tail=10
+
+# metrics-server のログ
+kubectl logs -n kube-system -l k8s-app=metrics-server --tail=10
 ```
 
 ### 🧹 クリーンアップ
@@ -116,7 +176,7 @@ az aks disable-addons \
   --name aks-microservices \
   --addons monitoring
 
-# ※ kubectl top / kubectl logs はリソースを作成しないのでクリーンアップ不要
+# ※ kubectl top / logs / events はリソースを作成しないのでクリーンアップ不要
 ```
 
 ---
@@ -124,7 +184,8 @@ az aks disable-addons \
 ## KCNA 試験チェックリスト
 
 - [ ] 3 本柱: Metrics, Logs, Traces（**Alerts は含まない**）
-- [ ] Prometheus = **Pull 型**
-- [ ] Counter / Gauge / Histogram の違い
+- [ ] Prometheus = **Pull 型**（スクレイプ）
+- [ ] Counter（増加のみ）/ Gauge（増減）/ Histogram（分布）の違い
 - [ ] OpenTelemetry = 統一的な計装（ベンダーロックイン防止）
 - [ ] Fluentd / Fluent Bit = CNCF Graduated
+- [ ] Grafana = メトリクスの可視化ダッシュボード
