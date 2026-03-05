@@ -1,0 +1,121 @@
+name: Product Catalog - CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/product-catalog/**"
+      - "k8s/product-catalog/**"
+      - "k8s/base/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "services/product-catalog/**"
+      - "k8s/product-catalog/**"
+      - "k8s/base/**"
+
+env:
+  SERVICE_NAME: product-catalog
+  WORKING_DIRECTORY: services/product-catalog
+  DOTNET_VERSION: "10.0.x"
+
+jobs:
+  # ─────────────────────────────────────────────
+  # ジョブ 1: ビルド & テスト
+  # ─────────────────────────────────────────────
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIRECTORY }}
+
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: .NET SDK セットアップ
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: NuGet パッケージのリストア
+        run: dotnet restore
+
+      - name: ビルド
+        run: dotnet build --no-restore --configuration Release
+
+      - name: テスト実行
+        run: dotnet test --no-build --configuration Release --verbosity normal
+
+  # ─────────────────────────────────────────────
+  # ジョブ 2: Docker イメージのビルド & ACR への Push
+  # ─────────────────────────────────────────────
+  docker-build-push:
+    name: Docker Build & Push
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: ACR ログイン
+        uses: azure/docker-login@v2
+        with:
+          login-server: ${{ secrets.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Docker イメージのビルド & Push
+        run: |
+          IMAGE=${{ secrets.ACR_LOGIN_SERVER }}/${{ env.SERVICE_NAME }}
+          docker build \
+            -t ${IMAGE}:${{ github.sha }} \
+            -t ${IMAGE}:latest \
+            -f ${{ env.WORKING_DIRECTORY }}/Dockerfile \
+            ${{ env.WORKING_DIRECTORY }}
+          docker push ${IMAGE}:${{ github.sha }}
+          docker push ${IMAGE}:latest
+
+  # ─────────────────────────────────────────────
+  # ジョブ 3: AKS へのデプロイ
+  # ─────────────────────────────────────────────
+  deploy:
+    name: Deploy to AKS
+    runs-on: ubuntu-latest
+    needs: docker-build-push
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Azure ログイン
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: AKS コンテキスト設定
+        uses: azure/aks-set-context@v4
+        with:
+          resource-group: ${{ secrets.AKS_RESOURCE_GROUP }}
+          cluster-name: ${{ secrets.AKS_CLUSTER_NAME }}
+
+      - name: K8s マニフェスト適用
+        run: |
+          kubectl apply -f k8s/base/
+          kubectl apply -f k8s/${{ env.SERVICE_NAME }}/
+
+      - name: イメージタグの更新
+        run: |
+          kubectl set image deployment/${{ env.SERVICE_NAME }} \
+            ${{ env.SERVICE_NAME }}=${{ secrets.ACR_LOGIN_SERVER }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+            -n ${{ env.SERVICE_NAME }}
+
+      - name: デプロイメントのロールアウト確認
+        run: |
+          kubectl rollout status deployment/${{ env.SERVICE_NAME }} \
+            -n ${{ env.SERVICE_NAME }} \
+            --timeout=300s

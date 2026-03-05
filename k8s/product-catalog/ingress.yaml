@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: product-catalog
+  namespace: product-catalog
+  labels:
+    app: product-catalog
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+    - http:
+        paths:
+          - path: /product-catalog(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: product-catalog
+                port:
+                  number: 80
