@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Product Catalog API</title>
+    <style>
+        :root {
+            --primary: #0078d4;
+            --primary-dark: #005a9e;
+            --success: #107c10;
+            --danger: #d13438;
+            --warning: #ff8c00;
+            --bg: #f3f2f1;
+            --card-bg: #ffffff;
+            --text: #323130;
+            --text-secondary: #605e5c;
+            --border: #edebe9;
+            --shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.5;
+        }
+
+        header {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: white;
+            padding: 1.5rem 2rem;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        header p {
+            opacity: 0.85;
+            font-size: 0.875rem;
+            margin-top: 0.25rem;
+        }
+
+        .status-bar {
+            display: flex;
+            gap: 1.5rem;
+            margin-top: 0.75rem;
+            font-size: 0.8rem;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #00cc6a;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 1.5rem;
+        }
+
+        .links-bar {
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .links-bar a {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.4rem 0.85rem;
+            background: white;
+            color: var(--primary);
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            border: 1px solid var(--border);
+            transition: all 0.15s;
+        }
+
+        .links-bar a:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 360px 1fr;
+            gap: 1.5rem;
+            align-items: start;
+        }
+
+        @media (max-width: 768px) {
+            .grid { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            box-shadow: var(--shadow);
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .card-header {
+            padding: 0.85rem 1.25rem;
+            font-weight: 600;
+            font-size: 0.95rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-body { padding: 1.25rem; }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 0.3rem;
+        }
+
+        .form-group input, .form-group textarea {
+            width: 100%;
+            padding: 0.5rem 0.65rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-family: inherit;
+            transition: border-color 0.15s;
+        }
+
+        .form-group input:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(0,120,212,0.15);
+        }
+
+        .form-group textarea { resize: vertical; min-height: 60px; }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.3rem;
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s;
+            font-family: inherit;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            width: 100%;
+        }
+
+        .btn-primary:hover { background: var(--primary-dark); }
+
+        .btn-sm {
+            padding: 0.3rem 0.6rem;
+            font-size: 0.75rem;
+        }
+
+        .btn-danger {
+            background: var(--danger);
+            color: white;
+        }
+
+        .btn-danger:hover { background: #a4262c; }
+
+        .btn-outline {
+            background: transparent;
+            color: var(--primary);
+            border: 1px solid var(--primary);
+        }
+
+        .btn-outline:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        .product-count {
+            font-size: 0.75rem;
+            background: var(--primary);
+            color: white;
+            padding: 0.15rem 0.55rem;
+            border-radius: 10px;
+            font-weight: 600;
+        }
+
+        .product-list {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .product-item {
+            padding: 0.85rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.1s;
+            cursor: default;
+        }
+
+        .product-item:last-child { border-bottom: none; }
+        .product-item:hover { background: #faf9f8; }
+
+        .product-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .product-price {
+            color: var(--success);
+            font-weight: 700;
+            font-size: 0.9rem;
+        }
+
+        .product-desc {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 0.2rem;
+        }
+
+        .product-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 0.4rem;
+        }
+
+        .category-tag {
+            font-size: 0.7rem;
+            padding: 0.15rem 0.5rem;
+            background: #e8f0fe;
+            color: var(--primary);
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .product-actions {
+            display: flex;
+            gap: 0.35rem;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 2.5rem 1rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state .icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+        .empty-state p { font-size: 0.85rem; }
+
+        .toast {
+            position: fixed;
+            bottom: 1.5rem;
+            right: 1.5rem;
+            padding: 0.75rem 1.25rem;
+            background: var(--text);
+            color: white;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s;
+            z-index: 100;
+        }
+
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.success { background: var(--success); }
+        .toast.error { background: var(--danger); }
+
+        .filter-bar {
+            padding: 0.65rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .filter-bar input {
+            flex: 1;
+            padding: 0.4rem 0.6rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-family: inherit;
+        }
+
+        .filter-bar input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        #editFormCard {
+            display: none;
+            margin-top: 1rem;
+        }
+
+        #editFormCard.visible { display: block; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>📦 Product Catalog API</h1>
+        <p>.NET 10 Minimal API — マイクロサービス</p>
+        <div class="status-bar">
+            <div class="status-item"><span class="status-dot"></span> Running</div>
+            <div class="status-item">🔗 <span id="baseUrl"></span></div>
+            <div class="status-item">⏱ <span id="uptime">-</span></div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="links-bar">
+            <a href="/openapi/v1.json" target="_blank">📄 OpenAPI Spec</a>
+            <a href="/healthz" target="_blank">💚 Health Check</a>
+            <a href="/readyz" target="_blank">✅ Readiness</a>
+            <a href="/api/products" target="_blank">🔌 API (JSON)</a>
+        </div>
+
+        <div class="grid">
+            <!-- 左: 作成フォーム -->
+            <div>
+                <div class="card">
+                    <div class="card-header">商品を追加</div>
+                    <div class="card-body">
+                        <form id="createForm">
+                            <div class="form-group">
+                                <label>商品名 *</label>
+                                <input type="text" id="name" required placeholder="例: 有機抹茶パウダー">
+                            </div>
+                            <div class="form-group">
+                                <label>説明</label>
+                                <textarea id="description" placeholder="商品の説明を入力..."></textarea>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>価格 (円) *</label>
+                                    <input type="number" id="price" required min="0" step="1" placeholder="1500">
+                                </div>
+                                <div class="form-group">
+                                    <label>カテゴリ *</label>
+                                    <input type="text" id="category" required placeholder="例: 食品">
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">＋ 商品を追加</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- 編集フォーム (非表示) -->
+                <div class="card" id="editFormCard">
+                    <div class="card-header">
+                        商品を編集
+                        <button class="btn btn-sm btn-outline" onclick="cancelEdit()">✕ キャンセル</button>
+                    </div>
+                    <div class="card-body">
+                        <form id="editForm">
+                            <input type="hidden" id="editId">
+                            <div class="form-group">
+                                <label>商品名 *</label>
+                                <input type="text" id="editName" required>
+                            </div>
+                            <div class="form-group">
+                                <label>説明</label>
+                                <textarea id="editDescription"></textarea>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>価格 (円) *</label>
+                                    <input type="number" id="editPrice" required min="0" step="1">
+                                </div>
+                                <div class="form-group">
+                                    <label>カテゴリ *</label>
+                                    <input type="text" id="editCategory" required>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">💾 更新</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右: 商品一覧 -->
+            <div class="card">
+                <div class="card-header">
+                    商品一覧
+                    <span class="product-count" id="productCount">0</span>
+                </div>
+                <div class="filter-bar">
+                    <input type="text" id="filterCategory" placeholder="🔍 カテゴリで絞り込み..." oninput="loadProducts()">
+                </div>
+                <div class="product-list" id="productList">
+                    <div class="empty-state">
+                        <div class="icon">📦</div>
+                        <p>商品がまだありません。<br>左のフォームから追加してください。</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const API = '/api/products';
+        const startTime = Date.now();
+
+        document.getElementById('baseUrl').textContent = location.origin;
+
+        // Uptime 表示
+        setInterval(() => {
+            const s = Math.floor((Date.now() - startTime) / 1000);
+            const m = Math.floor(s / 60);
+            const h = Math.floor(m / 60);
+            document.getElementById('uptime').textContent =
+                h > 0 ? `${h}h ${m % 60}m` : m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
+        }, 1000);
+
+        function showToast(msg, type = 'success') {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.className = `toast show ${type}`;
+            setTimeout(() => t.className = 'toast', 2500);
+        }
+
+        function formatPrice(price) {
+            return '¥' + Number(price).toLocaleString();
+        }
+
+        async function loadProducts() {
+            const cat = document.getElementById('filterCategory').value.trim();
+            const url = cat ? `${API}?category=${encodeURIComponent(cat)}` : API;
+            try {
+                const res = await fetch(url);
+                const products = await res.json();
+                const list = document.getElementById('productList');
+                document.getElementById('productCount').textContent = products.length;
+
+                if (products.length === 0) {
+                    list.innerHTML = `
+                        <div class="empty-state">
+                            <div class="icon">📦</div>
+                            <p>${cat ? 'カテゴリに一致する商品がありません。' : '商品がまだありません。<br>左のフォームから追加してください。'}</p>
+                        </div>`;
+                    return;
+                }
+
+                list.innerHTML = products.map(p => `
+                    <div class="product-item">
+                        <div class="product-name">
+                            <span>${esc(p.name)}</span>
+                            <span class="product-price">${formatPrice(p.price)}</span>
+                        </div>
+                        ${p.description ? `<div class="product-desc">${esc(p.description)}</div>` : ''}
+                        <div class="product-meta">
+                            <span class="category-tag">${esc(p.category)}</span>
+                            <div class="product-actions">
+                                <button class="btn btn-sm btn-outline" onclick='startEdit(${JSON.stringify(p)})'>✏️</button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteProduct('${p.id}')">🗑</button>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                showToast('商品の読み込みに失敗しました', 'error');
+            }
+        }
+
+        function esc(s) {
+            if (!s) return '';
+            const d = document.createElement('div');
+            d.textContent = s;
+            return d.innerHTML;
+        }
+
+        document.getElementById('createForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const body = {
+                name: document.getElementById('name').value,
+                description: document.getElementById('description').value || null,
+                price: Number(document.getElementById('price').value),
+                category: document.getElementById('category').value
+            };
+            try {
+                const res = await fetch(API, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (res.ok) {
+                    showToast('✅ 商品を追加しました');
+                    e.target.reset();
+                    loadProducts();
+                } else {
+                    showToast('追加に失敗しました', 'error');
+                }
+            } catch {
+                showToast('通信エラー', 'error');
+            }
+        });
+
+        function startEdit(product) {
+            document.getElementById('editId').value = product.id;
+            document.getElementById('editName').value = product.name;
+            document.getElementById('editDescription').value = product.description || '';
+            document.getElementById('editPrice').value = product.price;
+            document.getElementById('editCategory').value = product.category;
+            document.getElementById('editFormCard').classList.add('visible');
+            document.getElementById('editFormCard').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function cancelEdit() {
+            document.getElementById('editFormCard').classList.remove('visible');
+        }
+
+        document.getElementById('editForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('editId').value;
+            const body = {
+                name: document.getElementById('editName').value,
+                description: document.getElementById('editDescription').value || null,
+                price: Number(document.getElementById('editPrice').value),
+                category: document.getElementById('editCategory').value
+            };
+            try {
+                const res = await fetch(`${API}/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                if (res.ok) {
+                    showToast('✅ 商品を更新しました');
+                    cancelEdit();
+                    loadProducts();
+                } else {
+                    showToast('更新に失敗しました', 'error');
+                }
+            } catch {
+                showToast('通信エラー', 'error');
+            }
+        });
+
+        async function deleteProduct(id) {
+            if (!confirm('この商品を削除しますか？')) return;
+            try {
+                const res = await fetch(`${API}/${id}`, { method: 'DELETE' });
+                if (res.ok) {
+                    showToast('🗑 商品を削除しました');
+                    loadProducts();
+                } else {
+                    showToast('削除に失敗しました', 'error');
+                }
+            } catch {
+                showToast('通信エラー', 'error');
+            }
+        }
+
+        // 初期ロード
+        loadProducts();
+    </script>
+</body>
+</html>

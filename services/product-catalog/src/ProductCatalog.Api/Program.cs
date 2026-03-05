@@ -6,7 +6,7 @@ var builder = WebApplication.CreateBuilder(args);
 // DI 登録
 builder.Services.AddSingleton<IProductService, ProductService>();
 
-// OpenAPI (Swagger)
+// OpenAPI
 builder.Services.AddOpenApi();
 
 // ヘルスチェック
@@ -25,13 +25,17 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// OpenAPI は開発環境のみ
+// OpenAPI
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
 
 app.UseCors();
+
+// 静的ファイル配信 (wwwroot)
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
 // ヘルスチェックエンドポイント
 app.MapHealthChecks("/healthz");

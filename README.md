@@ -84,8 +84,9 @@ dotnet run
 ```
 
 起動後、以下にアクセスできます:
+- **UI (管理画面)**: http://localhost:5000/
 - API: http://localhost:5000/api/products
-- OpenAPI (Swagger): http://localhost:5000/openapi/v1.json
+- OpenAPI Spec: http://localhost:5000/openapi/v1.json
 - ヘルスチェック: http://localhost:5000/healthz
 
 ### Docker で起動
@@ -100,6 +101,7 @@ docker run -p 8080:8080 product-catalog:local
 ```
 
 起動後、以下にアクセスできます:
+- **UI (管理画面)**: http://localhost:8080/
 - API: http://localhost:8080/api/products
 - ヘルスチェック: http://localhost:8080/healthz
 
