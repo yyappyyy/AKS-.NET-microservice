@@ -1,0 +1,25 @@
+# ============================================================
+# Azure 環境変数 (サンプル)
+# ============================================================
+# このファイルをコピーして azure-env.sh / azure-env.ps1 を作成してください。
+#   cp scripts/azure-env.sample scripts/azure-env.sh
+#   cp scripts/azure-env.sample scripts/azure-env.ps1
+#
+# 値を自分の環境に合わせて編集してから source してください。
+# ※ azure-env.sh / azure-env.ps1 は .gitignore に含まれており Git にコミットされません。
+# ============================================================
+
+# Azure サブスクリプション ID
+SUBSCRIPTION_ID="<your-subscription-id>"
+
+# リソースグループ
+RESOURCE_GROUP="rg-aks-microservices"
+
+# リージョン
+LOCATION="japaneast"
+
+# Azure Container Registry 名（グローバルで一意）
+ACR_NAME="<your-unique-acr-name>"
+
+# AKS クラスター名
+AKS_CLUSTER="aks-microservices"

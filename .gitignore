@@ -6,6 +6,10 @@
 # dotenv files
 .env
 
+# Azure 環境変数ファイル（個人の設定値を含むため）
+scripts/azure-env.sh
+scripts/azure-env.ps1
+
 # User-specific files
 *.rsuser
 *.suo
